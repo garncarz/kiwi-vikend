@@ -55,6 +55,8 @@ def get_destination_id(name):
     if _id is None:
         cache_cities()
         _id = redis.get(key)
+        if _id is None:
+            raise ValueError('Unknown city: %s' % name)
     return _id.decode('utf-8')
 
     # legacy:
