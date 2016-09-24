@@ -101,10 +101,13 @@ def parse_routes(tree):
         }
 
         price = result_xml.xpath(
-            './div[contains(@class, "col_price_no_basket_image")]/span/text()'
+            './div['
+                'contains(@class, "col_price_no_basket_image") '
+                'or contains(@class, "col_price")'
+            ']/span/text()'
         )
         if len(price):
-            result['price'] = s(price[0])
+            result['price'] = s(price[0]).split()[0]
 
         _type = result_xml.xpath(
             'div[contains(@class, "col_icon")]//img/@alt'
