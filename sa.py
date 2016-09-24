@@ -107,7 +107,7 @@ def download_routes(_from, to, departure):
         date_str = result_xml.xpath(
             #'./preceding-sibling::h2[contains(@class, "overflow_h1")]/text()'
             './preceding-sibling::h2/text()'
-        )[0]
+        )[-1]
         date_m = sa_date_regex.match(date_str)
         day = int(date_m.group('day'))
         month = int(date_m.group('month'))
