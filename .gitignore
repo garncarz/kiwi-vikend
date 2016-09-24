@@ -1,3 +1,4 @@
 *.html
 
+config.json
 settings_local.py

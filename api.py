@@ -7,6 +7,8 @@ import logging
 from flask import Flask, request, abort
 
 import engine
+from config import ConfigLoader
+import settings
 
 
 logging.basicConfig(level=logging.DEBUG)
@@ -20,8 +22,18 @@ def index():
     return 'It works'
 
 
+def add_margin(route):
+    if 'price' in route:
+        route['price'] = float(route['price']) \
+                         * (1 + settings.dynamic['margin'])
+    return route
+
+
 @app.route('/search')
 def search():
+    if not settings.dynamic['on']:
+        return 'Stay home'
+
     result = None
 
     src = request.args.get('src')
@@ -51,10 +63,10 @@ def search():
     elif sort == 'alphabetical':
         result = sorted(result, key=lambda route: (route['from_name'],
                                                    route['to_name']))
-    else:
+    elif sort:
         abort(400)
 
-    result = list(result)
+    result = list(map(add_margin, result))
 
     if 'min_price' in request.args:
         result = min(filter(lambda route: 'price' in route, result),
@@ -67,4 +79,5 @@ def search():
 
 
 if __name__ == '__main__':
+    ConfigLoader().start()
     app.run(threaded=True)
