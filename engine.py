@@ -1,6 +1,5 @@
-#!/usr/bin/env python3
-
 from datetime import datetime, timedelta
+import dateutil.parser
 import json
 import logging
 import re
@@ -11,19 +10,13 @@ from redis import StrictRedis
 from slugify import slugify
 import unidecode
 
-# input:
-_from = 'Praha'
-to = 'Ostrava'
-departure = '2016-10-20'
 
 REDIS_EXPIRE = 60 * 60
 REDIS_DB = 3
 
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO)
 
 redis = StrictRedis(db=REDIS_DB)
-
 
 sa_date_regex = re.compile(r'.* (?P<day>\d+)\.(?P<month>\d+)\.(?P<year>\d+)')
 
@@ -171,4 +164,18 @@ def get_routes(_from, to, departure):
     return json.loads(routes.decode('utf-8'))
 
 
-result = get_routes(_from, to, departure)
+def get_routes_between(date_from, date_to):
+    date_min = dateutil.parser.parse(date_from)
+    date_max = dateutil.parser.parse(date_to) + timedelta(days=1)
+    routes = []
+    for conn_key in redis.scan_iter('connection_*'):
+        conn_b = redis.get(conn_key)
+        if conn_b:
+            connections = json.loads(conn_b.decode())
+            for route in connections:
+                departure = dateutil.parser.parse(route['departure'])
+                arrival = dateutil.parser.parse(route['arrival'])
+                if date_min <= departure <= date_max \
+                        or date_min <= arrival <= date_max:
+                    routes.append(route)
+    return routes
