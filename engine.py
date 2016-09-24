@@ -10,13 +10,12 @@ from redis import StrictRedis
 from slugify import slugify
 import unidecode
 
+from settings import REDIS_EXPIRE, REDIS_CONFIG
 
-REDIS_EXPIRE = 60 * 60
-REDIS_DB = 3
 
 logger = logging.getLogger(__name__)
 
-redis = StrictRedis(db=REDIS_DB)
+redis = StrictRedis(**REDIS_CONFIG)
 
 sa_date_regex = re.compile(r'.* (?P<day>\d+)\.(?P<month>\d+)\.(?P<year>\d+)')
 
