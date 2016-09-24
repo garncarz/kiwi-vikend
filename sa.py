@@ -2,16 +2,27 @@
 
 from datetime import datetime, timedelta
 import json
+import logging
 import re
 
 from grab import Grab
 from lxml import etree
+from redis import StrictRedis
+from slugify import slugify
 import unidecode
 
 # input:
 _from = 'Praha'
 to = 'Ostrava'
 departure = '2016-10-20'
+
+REDIS_EXPIRE = 60 * 60
+REDIS_DB = 3
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
+
+redis = StrictRedis(db=REDIS_DB)
 
 
 sa_date_regex = re.compile(r'.* (?P<day>\d+)\.(?P<month>\d+)\.(?P<year>\d+)')
@@ -27,11 +38,33 @@ def download_cities():
         cities.extend(country['cities'])
     return cities
 
+
+def cache_cities():
+    logger.info('Downloading cities & saving them into Redis...')
+    cities = download_cities()
+    with redis.pipeline() as pipe:
+        for city in cities:
+            pipe.set('city_id_%s' % slugify(city['name']), city['id'],
+                     ex=REDIS_EXPIRE)
+        pipe.execute()
+
+
 def get_destination_id(name):
-    return next(filter(lambda d: d['name'] == name, cities))['id']
+    key = 'city_id_%s' % slugify(name)
+    _id = redis.get(key)
+    if _id is None:
+        cache_cities()
+        _id = redis.get(key)
+    return _id.decode('utf-8')
+
+    # legacy:
+    # return next(filter(lambda d: d['name'] == name, cities))['id']
 
 
 def download_routes(_from, to, departure):
+    logger.info('Downloading & parsing route: %s -> %s @ %s'
+                % (_from, to, departure))
+
     session = Grab()
     session.go('https://www.studentagency.cz')
 
@@ -60,11 +93,10 @@ def download_routes(_from, to, departure):
     # with open('out.html', 'wb') as out:
     #     out.write(resp.body)
 
-    return etree.fromstring(resp.body.decode('utf-8'),
+    tree = etree.fromstring(resp.body.decode('utf-8'),
                             parser=etree.HTMLParser())
 
-
-def parse_routes(tree):
+    # parse routes:
     results = []
     for result_xml in tree.xpath('//div[contains(@class, "routeSummary")]'):
         s = lambda string: unidecode.unidecode(string).strip()
@@ -117,13 +149,24 @@ def parse_routes(tree):
         elif _type == 'Vlak':
             result['type'] = 'train'
         else:
-            raise ValueError('Unknown type: %s' % _type)
+            logger.warning('Unknown type: %s' % _type)
+            continue
 
         results.append(result)
 
     return results
 
 
-cities = download_cities()
-tree = download_routes(_from, to, departure)
-results = parse_routes(tree)
+def get_routes(_from, to, departure):
+    from_id = get_destination_id(_from)
+    to_id = get_destination_id(to)
+    key = 'connection_%s_%s_%s' % (from_id, to_id, departure)
+    routes = redis.get(key)
+    if routes is None:
+        routes = download_routes(_from, to, departure)
+        redis.set(key, json.dumps(routes), ex=REDIS_EXPIRE)
+        return routes
+    return json.loads(routes.decode('utf-8'))
+
+
+result = get_routes(_from, to, departure)
