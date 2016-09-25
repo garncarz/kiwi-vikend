@@ -3,6 +3,7 @@ import dateutil.parser
 import json
 import logging
 import re
+import uuid
 
 from grab import Grab
 from lxml import etree
@@ -10,12 +11,14 @@ from redis import StrictRedis
 from slugify import slugify
 import unidecode
 
+import settings
 from settings import REDIS_EXPIRE, REDIS_CONFIG
 
 
 logger = logging.getLogger(__name__)
 
 redis = StrictRedis(**REDIS_CONFIG)
+# TODO all .get() & .set() should be encapsulated, using json.dumps/loads()
 
 sa_date_regex = re.compile(r'.* (?P<day>\d+)\.(?P<month>\d+)\.(?P<year>\d+)')
 
@@ -178,3 +181,57 @@ def get_routes_between(date_from, date_to):
                         or date_min <= arrival <= date_max:
                     routes.append(route)
     return routes
+
+
+def add_margin(route):
+    if 'price' in route:
+        route['price'] = float(route['price']) \
+                         * (1 + settings.dynamic['margin'])
+    return route
+
+
+def create_booking(conn_spec, count, user_id):
+    """
+    Example of conn_spec: 10202000_10202002_2016-09-25_13:30
+    """
+    conn_key = conn_spec[:-17]
+    departure = conn_spec[-16:].replace('_', ' ')
+
+    for conn_key in redis.scan_iter('connection_%s_*' % conn_key):
+        conn_b = redis.get(conn_key)
+        if conn_b:
+            connections = json.loads(conn_b.decode())
+            route = next(filter(lambda route: route['departure'] == departure,
+                                connections))
+            if route and 'price' in route:
+                _id = str(uuid.uuid4())
+                price = add_margin(route)['price'] * count
+                redis.set('booking_%s' % _id, json.dumps({
+                    'status': 'success',
+                    'user_id': user_id,
+                    'price': price,
+                }))
+
+                return {
+                    'id': _id,
+                    'status': 'success',
+                    'price': price,
+                }
+
+    return {'status': 'failed'}
+
+
+def list_bookings(user_id=None):
+    bookings = []
+    for book_key in redis.scan_iter('booking_*'):
+        book_b = redis.get(book_key)
+        if book_b:
+            _id = book_key[8:].decode()
+            booking = json.loads(book_b.decode())
+            if not user_id or booking['user_id'] == user_id:
+                bookings.append({
+                    'id': _id,
+                    'status': booking['status'],
+                    'price': booking['price'],
+                })
+    return bookings

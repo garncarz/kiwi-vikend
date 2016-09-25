@@ -22,13 +22,6 @@ def index():
     return 'It works'
 
 
-def add_margin(route):
-    if 'price' in route:
-        route['price'] = float(route['price']) \
-                         * (1 + settings.dynamic['margin'])
-    return route
-
-
 @app.route('/search')
 def search():
     if not settings.dynamic['on']:
@@ -66,7 +59,7 @@ def search():
     elif sort:
         abort(400)
 
-    result = list(map(add_margin, result))
+    result = list(map(engine.add_margin, result))
 
     if 'min_price' in request.args:
         result = min(filter(lambda route: 'price' in route, result),
@@ -76,6 +69,21 @@ def search():
         return json.dumps(result)
     else:
         abort(400)
+
+
+@app.route('/create_booking', methods=['POST'])
+def create_booking():
+    conn_spec = request.json['connection']
+    count = sum(map(lambda p: p['number_of_passengers'],
+                    request.json['passengers']))
+    user_id = request.json['user_id']
+    return json.dumps(engine.create_booking(conn_spec, count, user_id))
+
+
+@app.route('/list_bookings')
+def list_bookings():
+    user_id = request.args.get('user_id')
+    return json.dumps(engine.list_bookings(user_id))
 
 
 if __name__ == '__main__':
