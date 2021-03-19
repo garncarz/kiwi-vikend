@@ -6,7 +6,7 @@ grab==0.6.30
 ipython==5.1.0
 ipython-genutils==0.1.0
 itsdangerous==0.24
-Jinja2==2.8
+Jinja2==2.11.3
 lxml==3.6.4
 MarkupSafe==0.23
 pexpect==4.2.1
